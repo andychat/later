@@ -515,8 +515,8 @@ describe('Parse Text', function() {
 	describe('error', function() {
 
 		it('should return the position of the first error', function() {
-			var p = parse('at 5:00 except on 10:00');
-			p.error.should.eql(18);
+			var p = parse('at 5:00 except on foo');
+			p.error.should.eql(17);
 		});
 
 	});

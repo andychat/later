@@ -1230,12 +1230,13 @@ later = function() {
     var recur = later.parse.recur, pos = 0, input = "", error;
     var TOKENTYPES = {
       eof: /^$/,
-      rank: /^((\d+)(st|nd|rd|th)?)\b/,
-      time: /^((([0]?[1-9]|1[0-2]):[0-5]\d(\s)?(am|pm))|(([0]?\d|1\d|2[0-3]):[0-5]\d))\b/,
-      dayName: /^((sun|mon|tue(s)?|wed(nes)?|thu(r(s)?)?|fri|sat(ur)?)(day)?)\b/,
+      rank: /^((\d+)(st|nd|rd|th)?|an|a)\b/,
+      time: /^((([0]?[1-9]|1[0-2])(:[0-5]\d(\s)?)?(am|pm|a|p))|(([0]?\d|1\d|2[0-3]):[0-5]\d))\b/,
+      dayName: /^((sun|mon|tue(s)?|wed(nes)?|thu(r(s)?)?|fri|sat(ur)?)(day)?(s)?)\b/,
       monthName: /^(jan(uary)?|feb(ruary)?|ma((r(ch)?)?|y)|apr(il)?|ju(ly|ne)|aug(ust)?|oct(ober)?|(sept|nov|dec)(ember)?)\b/,
-      yearIndex: /^(\d\d\d\d)\b/,
+      yearIndex: /^((20|19)\d\d)\b/,
       every: /^every\b/,
+      everyday: /^everyday\b/,
       after: /^after\b/,
       before: /^before\b/,
       second: /^(s|sec(ond)?(s)?)\b/,
@@ -1247,11 +1248,11 @@ later = function() {
       dayOfYear: /^day(s)? of the year\b/,
       weekOfYear: /^week(s)?( of the year)?\b/,
       weekOfMonth: /^week(s)? of the month\b/,
-      weekday: /^weekday\b/,
-      weekend: /^weekend\b/,
+      weekday: /^weekday(s)?\b/,
+      weekend: /^weekend(s)?\b/,
       month: /^month(s)?\b/,
       year: /^year(s)?\b/,
-      between: /^between (the)?\b/,
+      between: /^between( the)?|from\b/,
       start: /^(start(ing)? (at|on( the)?)?)\b/,
       at: /^(at|@)\b/,
       and: /^(,|and\b)/,
@@ -1259,11 +1260,12 @@ later = function() {
       also: /(also)\b/,
       first: /^(first)\b/,
       last: /^last\b/,
-      "in": /^in\b/,
+      in: /^in\b/,
       of: /^of\b/,
       onthe: /^on the\b/,
       on: /^on\b/,
-      through: /(-|^(to|through)\b)/
+      through: /(-|^(to|through|thru|until|til)\b)/,
+      for: /^for\b/
     };
     var NAMES = {
       jan: 1,
@@ -1292,8 +1294,9 @@ later = function() {
       "3rd": 3,
       thi: 3,
       "4th": 4,
-      "for": 4
+      for: 4
     };
+    var TIME_PERIOD_TYPES = [ TOKENTYPES.second, TOKENTYPES.minute, TOKENTYPES.hour, TOKENTYPES.dayOfYear, TOKENTYPES.dayOfWeek, TOKENTYPES.dayInstance, TOKENTYPES.day, TOKENTYPES.month, TOKENTYPES.year, TOKENTYPES.weekOfMonth, TOKENTYPES.weekOfYear ];
     function t(start, end, text, type) {
       return {
         startPos: start,
@@ -1306,7 +1309,7 @@ later = function() {
       var scanTokens = expected instanceof Array ? expected : [ expected ], whiteSpace = /\s+/, token, curInput, m, scanToken, start, len;
       scanTokens.push(whiteSpace);
       start = pos;
-      while (!token || token.type === whiteSpace) {
+      while (!token || token.type && token.type.toString() === whiteSpace.toString()) {
         len = -1;
         curInput = input.substring(start);
         token = t(start, start, input.split(whiteSpace)[0]);
@@ -1319,63 +1322,162 @@ later = function() {
             token = t(start, start + len, curInput.substring(0, len), scanToken);
           }
         }
-        if (token.type === whiteSpace) {
+        if (token.type && token.type.toString() === whiteSpace.toString()) {
           start = token.endPos;
         }
       }
-      return token;
+      if (token.type) {
+        return token;
+      }
+      return null;
     }
     function scan(expectedToken) {
       var token = peek(expectedToken);
+      if (token) {
+        accept(token);
+      }
+      return token;
+    }
+    function accept(token) {
       pos = token.endPos;
       return token;
     }
-    function parseThroughExpr(tokenType) {
-      var start = +parseTokenValue(tokenType), end = checkAndParse(TOKENTYPES.through) ? +parseTokenValue(tokenType) : start, nums = [];
-      for (var i = start; i <= end; i++) {
-        nums.push(i);
-      }
-      return nums;
-    }
-    function parseRanges(tokenType) {
-      var nums = parseThroughExpr(tokenType);
-      while (checkAndParse(TOKENTYPES.and)) {
-        nums = nums.concat(parseThroughExpr(tokenType));
-      }
-      return nums;
-    }
-    function parseEvery(r) {
-      var num, period, start, end;
-      if (checkAndParse(TOKENTYPES.weekend)) {
-        r.on(NAMES.sun, NAMES.sat).dayOfWeek();
-      } else if (checkAndParse(TOKENTYPES.weekday)) {
-        r.on(NAMES.mon, NAMES.tue, NAMES.wed, NAMES.thu, NAMES.fri).dayOfWeek();
+    function parseTime(r, through) {
+      var token = peek([ TOKENTYPES.dayName, TOKENTYPES.yearIndex, TOKENTYPES.rank, TOKENTYPES.time, TOKENTYPES.monthName ]);
+      if (token) {
+        parseOneTimeOrRange(r, token.type, through);
+        while (maybeParseToken(TOKENTYPES.and)) {
+          parseOneTimeOrRange(r, token.type, through);
+        }
       } else {
+        error = pos;
+      }
+    }
+    function parseOneTimeOrRange(r, tokenType, through) {
+      var _through = through || TOKENTYPES.through;
+      var start = parseTokenValue(tokenType);
+      var end = maybeParseToken(_through) ? parseTokenValue(tokenType) : null;
+      var nums = [];
+      if (tokenType.toString() !== TOKENTYPES.time.toString()) {
+        var i = start;
+        do {
+          nums.push(i);
+          i++;
+        } while (i <= end);
+        r.on(nums);
+        if (tokenType.toString() === TOKENTYPES.rank.toString()) {
+          parseTimePeriod(r);
+        } else {
+          applyTimePeriod(r, tokenType);
+        }
+      } else if (end == null) {
+        r.on(start);
+        applyTimePeriod(r, tokenType);
+      } else {
+        r.after(start);
+        applyTimePeriod(r, tokenType);
+        r.before(end);
+        applyTimePeriod(r, tokenType);
+      }
+    }
+    function parseEveryRank(r) {
+      var num;
+      var start;
+      var end;
+      var token;
+      if (token = peek(TIME_PERIOD_TYPES)) {
+        accept(token);
+        r.every(1);
+        applyTimePeriod(r, token.type);
+      } else if (token = peek(TOKENTYPES.everyday)) {
+        accept(token);
+        r.every(1);
+        applyTimePeriod(r, TOKENTYPES.dayOfWeek);
+      } else {
+        r.every(parseTokenValue(TOKENTYPES.rank));
+        parseTimePeriod(r);
+      }
+      if (maybeParseToken(TOKENTYPES.start)) {
         num = parseTokenValue(TOKENTYPES.rank);
-        r.every(num);
-        period = parseTimePeriod(r);
-        if (checkAndParse(TOKENTYPES.start)) {
-          num = parseTokenValue(TOKENTYPES.rank);
-          r.startingOn(num);
-          parseToken(period.type);
-        } else if (checkAndParse(TOKENTYPES.between)) {
+        r.startingOn(num);
+        maybeParseToken(TIME_PERIOD_TYPES);
+      } else if (maybeParseToken(TOKENTYPES.between)) {
+        if (token = peek([ TOKENTYPES.time, TOKENTYPES.dayName, TOKENTYPES.monthName, TOKENTYPES.yearIndex ])) {
+          parseOneTime(r, token.type, [ TOKENTYPES.through, TOKENTYPES.and ]);
+        } else {
           start = parseTokenValue(TOKENTYPES.rank);
-          if (checkAndParse(TOKENTYPES.and)) {
+          if (maybeParseToken(TOKENTYPES.and)) {
             end = parseTokenValue(TOKENTYPES.rank);
             r.between(start, end);
           }
         }
       }
     }
-    function parseOnThe(r) {
-      if (checkAndParse(TOKENTYPES.first)) {
-        r.first();
-      } else if (checkAndParse(TOKENTYPES.last)) {
-        r.last();
+    function parseEvery(r) {
+      if (maybeParseToken(TOKENTYPES.weekend)) {
+        r.on(NAMES.sun, NAMES.sat).dayOfWeek();
+      } else if (maybeParseToken(TOKENTYPES.weekday)) {
+        r.on(NAMES.mon, NAMES.tue, NAMES.wed, NAMES.thu, NAMES.fri).dayOfWeek();
+      } else if (peek([ TOKENTYPES.time, TOKENTYPES.dayName, TOKENTYPES.monthName ])) {
+        parseTime(r);
       } else {
-        r.on(parseRanges(TOKENTYPES.rank));
+        parseEveryRank(r);
       }
-      parseTimePeriod(r);
+    }
+    function parseFor(r) {
+      var num = parseTokenValue(TOKENTYPES.rank);
+      var period = parseToken(TIME_PERIOD_TYPES);
+      var type = null;
+      for (var t in TOKENTYPES) {
+        if (TOKENTYPES[t].toString() === period.type.toString()) {
+          type = t;
+          break;
+        }
+      }
+      if (!type) {
+        error = pos;
+      } else {
+        const now = new Date();
+        const nowPeriodValue = later[type].val(now);
+        const end = later[type].next(now, nowPeriodValue + num);
+        r.after(now).fullDate();
+        r.before(end).fullDate();
+      }
+    }
+    function parseOnThe(r) {
+      if (maybeParseToken(TOKENTYPES.first)) {
+        r.first();
+        parseTimePeriod(r);
+      } else if (maybeParseToken(TOKENTYPES.last)) {
+        r.last();
+        parseTimePeriod(r);
+      } else {
+        parseTime(r);
+      }
+    }
+    function parseAfter(r) {
+      if (peek(TOKENTYPES.time)) {
+        r.after(parseTokenValue(TOKENTYPES.time)).time();
+      } else {
+        r.after(parseTokenValue(TOKENTYPES.rank));
+        parseTimePeriod(r);
+      }
+    }
+    function parseBefore(r) {
+      if (peek(TOKENTYPES.time)) {
+        r.before(parseTokenValue(TOKENTYPES.time)).time();
+      } else {
+        r.before(parseTokenValue(TOKENTYPES.rank));
+        parseTimePeriod(r);
+      }
+    }
+    function parseBetween(r) {
+      var token = parseToken(TOKENTYPES.between);
+      if (token.text === "between") {
+        parseTime(r, [ TOKENTYPES.through, TOKENTYPES.and ]);
+      } else {
+        parseTime(r);
+      }
     }
     function parseScheduleExpr(str) {
       pos = 0;
@@ -1383,64 +1485,69 @@ later = function() {
       error = -1;
       var r = recur();
       while (pos < input.length && error < 0) {
-        var token = parseToken([ TOKENTYPES.every, TOKENTYPES.after, TOKENTYPES.before, TOKENTYPES.onthe, TOKENTYPES.on, TOKENTYPES.of, TOKENTYPES["in"], TOKENTYPES.at, TOKENTYPES.and, TOKENTYPES.except, TOKENTYPES.also ]);
-        switch (token.type) {
-         case TOKENTYPES.every:
+        var token = peek([ TOKENTYPES.every, TOKENTYPES.after, TOKENTYPES.before, TOKENTYPES.onthe, TOKENTYPES.on, TOKENTYPES.of, TOKENTYPES["in"], TOKENTYPES.at, TOKENTYPES.and, TOKENTYPES.except, TOKENTYPES.also, TOKENTYPES.for, TOKENTYPES.dayName, TOKENTYPES.everyday, TOKENTYPES.weekday, TOKENTYPES.weekend, TOKENTYPES.monthName, TOKENTYPES.time, TOKENTYPES.between, TOKENTYPES.eof ]);
+        var type = token ? token.type && token.type.toString() : null;
+        switch (type) {
+         case TOKENTYPES.every.toString():
+          accept(token);
+
+         case TOKENTYPES.weekday.toString():
+         case TOKENTYPES.weekend.toString():
+         case TOKENTYPES.dayName.toString():
+         case TOKENTYPES.monthName.toString():
+         case TOKENTYPES.time.toString():
+         case TOKENTYPES.everyday.toString():
           parseEvery(r);
           break;
 
-         case TOKENTYPES.after:
-          if (peek(TOKENTYPES.time).type !== undefined) {
-            r.after(parseTokenValue(TOKENTYPES.time));
-            r.time();
-          } else {
-            r.after(parseTokenValue(TOKENTYPES.rank));
-            parseTimePeriod(r);
-          }
+         case TOKENTYPES.for.toString():
+          accept(token);
+          parseFor(r);
           break;
 
-         case TOKENTYPES.before:
-          if (peek(TOKENTYPES.time).type !== undefined) {
-            r.before(parseTokenValue(TOKENTYPES.time));
-            r.time();
-          } else {
-            r.before(parseTokenValue(TOKENTYPES.rank));
-            parseTimePeriod(r);
-          }
+         case TOKENTYPES.after.toString():
+          accept(token);
+          parseAfter(r);
           break;
 
-         case TOKENTYPES.onthe:
+         case TOKENTYPES.before.toString():
+          accept(token);
+          parseBefore(r);
+          break;
+
+         case TOKENTYPES.onthe.toString():
+          accept(token);
           parseOnThe(r);
           break;
 
-         case TOKENTYPES.on:
-          r.on(parseRanges(TOKENTYPES.dayName)).dayOfWeek();
+         case TOKENTYPES.on.toString():
+         case TOKENTYPES.of.toString():
+         case TOKENTYPES["in"].toString():
+         case TOKENTYPES.at.toString():
+          accept(token);
+          parseTime(r);
           break;
 
-         case TOKENTYPES.of:
-          r.on(parseRanges(TOKENTYPES.monthName)).month();
+         case TOKENTYPES.and.toString():
+          accept(token);
           break;
 
-         case TOKENTYPES["in"]:
-          r.on(parseRanges(TOKENTYPES.yearIndex)).year();
-          break;
-
-         case TOKENTYPES.at:
-          r.on(parseTokenValue(TOKENTYPES.time)).time();
-          while (checkAndParse(TOKENTYPES.and)) {
-            r.on(parseTokenValue(TOKENTYPES.time)).time();
-          }
-          break;
-
-         case TOKENTYPES.and:
-          break;
-
-         case TOKENTYPES.also:
+         case TOKENTYPES.also.toString():
+          accept(token);
           r.and();
           break;
 
-         case TOKENTYPES.except:
+         case TOKENTYPES.between.toString():
+          parseBetween(r);
+          break;
+
+         case TOKENTYPES.except.toString():
+          accept(token);
           r.except();
+          break;
+
+         case TOKENTYPES.eof.toString():
+          accept(token);
           break;
 
          default:
@@ -1454,68 +1561,80 @@ later = function() {
       };
     }
     function parseTimePeriod(r) {
-      var timePeriod = parseToken([ TOKENTYPES.second, TOKENTYPES.minute, TOKENTYPES.hour, TOKENTYPES.dayOfYear, TOKENTYPES.dayOfWeek, TOKENTYPES.dayInstance, TOKENTYPES.day, TOKENTYPES.month, TOKENTYPES.year, TOKENTYPES.weekOfMonth, TOKENTYPES.weekOfYear ]);
-      switch (timePeriod.type) {
-       case TOKENTYPES.second:
+      var timePeriod = parseToken(TIME_PERIOD_TYPES);
+      applyTimePeriod(r, timePeriod.type);
+      return timePeriod;
+    }
+    function applyTimePeriod(r, type) {
+      switch (type && type.toString()) {
+       case TOKENTYPES.second.toString():
         r.second();
         break;
 
-       case TOKENTYPES.minute:
+       case TOKENTYPES.minute.toString():
         r.minute();
         break;
 
-       case TOKENTYPES.hour:
+       case TOKENTYPES.hour.toString():
         r.hour();
         break;
 
-       case TOKENTYPES.dayOfYear:
+       case TOKENTYPES.dayOfYear.toString():
         r.dayOfYear();
         break;
 
-       case TOKENTYPES.dayOfWeek:
+       case TOKENTYPES.dayOfWeek.toString():
+       case TOKENTYPES.dayName.toString():
+       case TOKENTYPES.everyday.toString():
         r.dayOfWeek();
         break;
 
-       case TOKENTYPES.dayInstance:
+       case TOKENTYPES.dayInstance.toString():
         r.dayOfWeekCount();
         break;
 
-       case TOKENTYPES.day:
+       case TOKENTYPES.day.toString():
         r.dayOfMonth();
         break;
 
-       case TOKENTYPES.weekOfMonth:
+       case TOKENTYPES.weekOfMonth.toString():
         r.weekOfMonth();
         break;
 
-       case TOKENTYPES.weekOfYear:
+       case TOKENTYPES.weekOfYear.toString():
         r.weekOfYear();
         break;
 
-       case TOKENTYPES.month:
+       case TOKENTYPES.month.toString():
+       case TOKENTYPES.monthName.toString():
         r.month();
         break;
 
-       case TOKENTYPES.year:
+       case TOKENTYPES.year.toString():
+       case TOKENTYPES.yearIndex.toString():
         r.year();
+        break;
+
+       case TOKENTYPES.time.toString():
+        r.time();
         break;
 
        default:
         error = pos;
       }
-      return timePeriod;
     }
-    function checkAndParse(tokenType) {
-      var found = peek(tokenType).type === tokenType;
-      if (found) {
-        scan(tokenType);
+    function maybeParseToken(tokenType) {
+      var t = peek(tokenType);
+      if (t) {
+        t.text = convertString(t);
+        return accept(t);
       }
-      return found;
+      return t;
     }
     function parseToken(tokenType) {
       var t = scan(tokenType);
-      if (t.type) {
-        t.text = convertString(t.text, tokenType);
+      if (t) {
+        t.text = convertString(t);
       } else {
         error = pos;
       }
@@ -1524,21 +1643,38 @@ later = function() {
     function parseTokenValue(tokenType) {
       return parseToken(tokenType).text;
     }
-    function convertString(str, tokenType) {
+    function convertString(token) {
+      var str = token.text;
       var output = str;
-      switch (tokenType) {
-       case TOKENTYPES.time:
-        var parts = str.split(/(:|am|pm)/), hour = parts[3] === "pm" && parts[0] < 12 ? parseInt(parts[0], 10) + 12 : parts[0], min = parts[2].trim();
+      switch (token.type && token.type.toString()) {
+       case TOKENTYPES.time.toString():
+        var parts = str.split(/(:|am|pm|a|p)/).filter(function(s) {
+          return s != "";
+        });
+        var hour = "00";
+        var min = "00";
+        if (parts.length != 2) {
+          min = parts[2].trim();
+        }
+        hour = (parts[parts.length - 1] === "pm" || parts[parts.length - 1] === "p") && parts[0] < 12 ? parseInt(parts[0], 10) + 12 : parts[0];
         output = (hour.length === 1 ? "0" : "") + hour + ":" + min;
         break;
 
-       case TOKENTYPES.rank:
-        output = parseInt(/^\d+/.exec(str)[0], 10);
+       case TOKENTYPES.rank.toString():
+        if (/^(an|a)/.test(str)) {
+          output = 1;
+        } else {
+          output = parseInt(/^\d+/.exec(str)[0], 10);
+        }
         break;
 
-       case TOKENTYPES.monthName:
-       case TOKENTYPES.dayName:
+       case TOKENTYPES.monthName.toString():
+       case TOKENTYPES.dayName.toString():
         output = NAMES[str.substring(0, 3)];
+        break;
+
+       case TOKENTYPES.yearIndex.toString():
+        output = parseInt(str);
         break;
       }
       return output;
