@@ -147,9 +147,26 @@ later.parse.text = function(str) {
       TOKENTYPES.time, TOKENTYPES.monthName]);
 
     if (token) {
-      parseOneTimeOrRange(r, token.type, through);
-      while (maybeParseToken(TOKENTYPES.and)) {
-        parseOneTimeOrRange(r, token.type, through);
+      if (token.type.toString() !== TOKENTYPES.time.toString()) {
+        var values = [];
+        var period = null;
+
+        period = parsePeriodInstanceOrRange(token.type, through);
+        values = period.values;
+        while (maybeParseToken(TOKENTYPES.and)) {
+          period = parsePeriodInstanceOrRange(token.type, through);
+          values = values.concat(period.values);
+        }
+
+        r.on(values);
+
+        if (token.type.toString() === TOKENTYPES.rank.toString()) {
+          applyTimePeriod(r, period.type);
+        } else {
+          applyTimePeriod(r, token.type);
+        }
+      } else {
+        parseTimeInstanceOrRange(r, token.type, through);
       }
     } else {
       error = pos;
@@ -162,36 +179,46 @@ later.parse.text = function(str) {
   *
   * @param {TokenType} tokenType: The type of range values allowed
   */
-  function parseOneTimeOrRange(r, tokenType, through) {
+  function parsePeriodInstanceOrRange(tokenType, through) {
     var _through = through || TOKENTYPES.through;
     var start = parseTokenValue(tokenType);
+    var period = maybeParseToken(TIME_PERIOD_TYPES);
     var end = maybeParseToken(_through) ? parseTokenValue(tokenType) : null;
-    var nums = [];
+    var values = [];
+
+    if (end && tokenType.toString() === TOKENTYPES.rank.toString()) {
+      period = maybeParseToken(TIME_PERIOD_TYPES);
+    }
 
     if (tokenType.toString() !== TOKENTYPES.time.toString()) {
       var i = start;
       do {
-        nums.push(i);
+        values.push(i);
         i++;
       } while (i <= end);
+    } else {
+      error = pos;
+    }
 
-      r.on(nums);
-      if (tokenType.toString() === TOKENTYPES.rank.toString()) {
-        parseTimePeriod(r);
-      } else {
-        applyTimePeriod(r, tokenType);
-      }
-    }
-    else if (end == null) {
+    return {
+      type: period && period.type,
+      values: values
+    };
+  }
+
+  function parseTimeInstanceOrRange(r, tokenType, through) {
+    var _through = through || TOKENTYPES.through;
+    var start = parseTokenValue(tokenType);
+    var end = maybeParseToken(_through) ? parseTokenValue(tokenType) : null;
+
+    if (end === null) {
       r.on(start);
-      applyTimePeriod(r, tokenType);
-    }
-    else {
+    } else {
       r.after(start);
       applyTimePeriod(r, tokenType);
       r.before(end);
-      applyTimePeriod(r, tokenType);
     }
+    applyTimePeriod(r, tokenType);
   }
 
   function parseEveryRank(r) {
@@ -425,9 +452,19 @@ later.parse.text = function(str) {
   * @param {Recur} r: The recurrence to add the time period to
   */
   function parseTimePeriod(r) {
-    var timePeriod = parseToken(TIME_PERIOD_TYPES);
-    applyTimePeriod(r, timePeriod.type);
-    return timePeriod;
+    var token = maybeParseTimePeriod(r);
+    if (!token) {
+      error = pos;
+    }
+    return token;
+  }
+
+  function maybeParseTimePeriod(r) {
+    var token = maybeParseToken(TIME_PERIOD_TYPES);
+    if (token) {
+      applyTimePeriod(r, token.type);
+    }
+    return token;
   }
 
   function applyTimePeriod(r, type) {
