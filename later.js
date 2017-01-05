@@ -792,6 +792,9 @@ later = function() {
       isValid: function(d) {
         return getInstances("next", 1, d, d) !== later.NEVER;
       },
+      inRange: function(d) {
+        return getInstances("next", 1, d, d, true) !== later.NEVER;
+      },
       next: function(count, startDate, endDate) {
         return getInstances("next", count || 1, startDate, endDate);
       },

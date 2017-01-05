@@ -389,6 +389,15 @@ later.schedule = function(sched) {
     },
 
     /**
+    * Returns true if d is inside of a range of the current schedule.
+    *
+    * @param {Date} d: The date to check
+    */
+    inRange: function(d) {
+      return getInstances('next', 1, d, d, true) !== later.NEVER;
+    },
+
+    /**
     * Finds the next valid instance or instances of the current schedule,
     * optionally between a specified start and end date. Start date is
     * Date.now() by default, end date is unspecified. Start date must be
