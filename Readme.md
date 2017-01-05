@@ -1,5 +1,7 @@
 # [Later](http://bunkat.github.io/later/) [![Build Status](https://travis-ci.org/bunkat/later.svg)](https://travis-ci.org/bunkat/later)
 
+NOTE: This is a fork of later at http://github.com/andychat/later/
+
 _Later_ is a library for describing recurring schedules and calculating their future occurrences.  It supports a very flexible schedule definition including support for composite schedules and schedule exceptions. Create new schedules manually, via Cron expression, via text expressions, or using a fully chainable API.
 
 Types of schedules supported by _Later_:

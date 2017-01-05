@@ -1,17 +1,17 @@
 {
-  "name": "later",
-  "version": "1.2.0",
-  "description": "Determine later (or previous) occurrences of recurring schedules",
+  "name": "mostly-later",
+  "version": "0.0.1",
+  "description": "Determine later (or previous) occurrences of recurring schedules (forked from later; with more flexible text parsing)",
   "keywords": [
     "schedule",
     "occurrences",
     "recur",
     "cron"
   ],
-  "author": "BunKat <bill@levelstory.com>",
+  "author": "Andy Pang",
   "repository": {
     "type": "git",
-    "url": "git://github.com/bunkat/later.git"
+    "url": "git://github.com/andychat/later.git"
   },
   "main": "index.js",
   "browserify": "index-browserify.js",
