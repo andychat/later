@@ -69,6 +69,10 @@ later.parse.text = function(str) {
     TOKENTYPES.dayInstance, TOKENTYPES.day, TOKENTYPES.month,
     TOKENTYPES.year, TOKENTYPES.weekOfMonth, TOKENTYPES.weekOfYear];
 
+  // year takes precedence over rank.
+  var TIME_VALUE_TYPES = [TOKENTYPES.dayName, TOKENTYPES.yearIndex, TOKENTYPES.rank,
+    TOKENTYPES.time, TOKENTYPES.monthName];
+
   /**
   * Bundles up the results of the peek operation into a token.
   *
@@ -142,34 +146,27 @@ later.parse.text = function(str) {
   }
 
   function parseTime(r, through) {
-    // year takes precedence over rank.
-    var token = peek([TOKENTYPES.dayName, TOKENTYPES.yearIndex, TOKENTYPES.rank,
-      TOKENTYPES.time, TOKENTYPES.monthName]);
+    var period = parseTimeInstanceOrRange(through);
+    if (!period) { return; }
+    var values = period.values;
 
-    if (token) {
-      if (token.type.toString() !== TOKENTYPES.time.toString()) {
-        var values = [];
-        var period = null;
-
-        period = parsePeriodInstanceOrRange(token.type, through);
-        values = period.values;
-        while (maybeParseToken(TOKENTYPES.and)) {
-          period = parsePeriodInstanceOrRange(token.type, through);
-          values = values.concat(period.values);
-        }
-
-        r.on(values);
-
-        if (token.type.toString() === TOKENTYPES.rank.toString()) {
-          applyTimePeriod(r, period.type);
-        } else {
-          applyTimePeriod(r, token.type);
-        }
+    if (period.type && period.type.toString() === TOKENTYPES.time.toString()) {
+      if (values.length === 1) {
+        r.on(values[0]);
       } else {
-        parseTimeInstanceOrRange(r, token.type, through);
+        r.after(values[0]);
+        applyTimePeriod(r, period.type);
+        r.before(values[1]);
       }
-    } else {
-      error = pos;
+      applyTimePeriod(r, period.type);
+    }
+    else {
+      while (maybeParseToken(TOKENTYPES.and)) {
+        period = parseTimeInstanceOrRange(through);
+        values = values.concat(period.values);
+      }
+      r.on(values);
+      applyTimePeriod(r, period.type);
     }
   }
 
@@ -179,46 +176,66 @@ later.parse.text = function(str) {
   *
   * @param {TokenType} tokenType: The type of range values allowed
   */
-  function parsePeriodInstanceOrRange(tokenType, through) {
+  function parseTimeInstanceOrRange(through) {
     var _through = through || TOKENTYPES.through;
-    var start = parseTokenValue(tokenType);
-    var period = maybeParseToken(TIME_PERIOD_TYPES);
-    var end = maybeParseToken(_through) ? parseTokenValue(tokenType) : null;
-    var values = [];
+    var start = parseToken(TIME_VALUE_TYPES);
+    var startPeriod = start;
 
-    if (end && tokenType.toString() === TOKENTYPES.rank.toString()) {
-      period = maybeParseToken(TIME_PERIOD_TYPES);
+    if (!start) { return; }
+
+    // If this looks like a rank, attempt to parse the period type next.
+    if (start.type.toString() === TOKENTYPES.rank.toString()) {
+      startPeriod = maybeParseToken(TIME_PERIOD_TYPES);
     }
 
-    if (tokenType.toString() !== TOKENTYPES.time.toString()) {
-      var i = start;
-      do {
-        values.push(i);
-        i++;
-      } while (i <= end);
+    // Try to parse the 2nd part of the range.
+    var end = maybeParseToken(_through) ? parseToken(TIME_VALUE_TYPES) : null;
+    var endPeriod = end;
+
+    // If the end of the range is a rank, attempt to parse the period type.
+    if (end && end.type.toString() === TOKENTYPES.rank.toString()) {
+      endPeriod = maybeParseToken(TIME_PERIOD_TYPES);
+    }
+
+    function hasType(token) {
+      return token && token.type && token.type.toString() !== TOKENTYPES.rank.toString();
+    }
+
+    // Did the start of the range have a type? If so, use it.
+    var type = null;
+    if (hasType(startPeriod)) {
+      type = startPeriod.type;
+      // Integrity check to see if we got different types for the start and end.
+      if (hasType(endPeriod) && startPeriod.type.toString() !== endPeriod.type.toString()) {
+        error = pos;
+        type = null;
+      }
+    }
+    else if (hasType(endPeriod)) {
+      type = endPeriod.type;
     } else {
       error = pos;
     }
 
+    var values = [];
+    if (type && type.toString() === TOKENTYPES.time.toString()) {
+      values = [start.text];
+      if (end) {
+        values.push(end.text);
+      }
+    }
+    else {
+      var i = parseInt(start.text);
+      do {
+        values.push(i);
+        i++;
+      } while (i <= (end && parseInt(end.text)));
+    }
+
     return {
-      type: period && period.type,
+      type: type,
       values: values
     };
-  }
-
-  function parseTimeInstanceOrRange(r, tokenType, through) {
-    var _through = through || TOKENTYPES.through;
-    var start = parseTokenValue(tokenType);
-    var end = maybeParseToken(_through) ? parseTokenValue(tokenType) : null;
-
-    if (end === null) {
-      r.on(start);
-    } else {
-      r.after(start);
-      applyTimePeriod(r, tokenType);
-      r.before(end);
-    }
-    applyTimePeriod(r, tokenType);
   }
 
   function parseEveryRank(r) {
