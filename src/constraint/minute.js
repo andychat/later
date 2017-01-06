@@ -31,6 +31,15 @@ later.minute = later.m = {
   },
 
   /**
+   * Returns the seconds representation of minutes.
+   *
+   * @param {Integer} val: The value to convert.
+   */
+  sec: function(val) {
+    return val * 60;
+  },
+
+  /**
   * Returns true if the val is valid for the date specified.
   *
   * @param {Date} d: The date to check the value on

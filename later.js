@@ -246,6 +246,9 @@ later = function() {
     val: function(d) {
       return d.h || (d.h = later.date.getHour.call(d));
     },
+    sec: function(val) {
+      return val * 3600;
+    },
     isValid: function(d, val) {
       return later.h.val(d) === val;
     },
@@ -276,6 +279,9 @@ later = function() {
     range: 60,
     val: function(d) {
       return d.m || (d.m = later.date.getMin.call(d));
+    },
+    sec: function(val) {
+      return val * 60;
     },
     isValid: function(d, val) {
       return later.m.val(d) === val;
@@ -334,6 +340,9 @@ later = function() {
     val: function(d) {
       return d.s || (d.s = later.date.getSec.call(d));
     },
+    sec: function(val) {
+      return val;
+    },
     isValid: function(d, val) {
       return later.s.val(d) === val;
     },
@@ -377,7 +386,6 @@ later = function() {
       return d;
     },
     next: function(d, val) {
-      val = val > 86399 ? 0 : val;
       var next = later.date.next(later.Y.val(d), later.M.val(d), later.D.val(d) + (val <= later.t.val(d) ? 1 : 0), 0, 0, val);
       if (!later.date.isUTC && next.getTime() < d.getTime()) {
         next = later.date.next(later.Y.val(next), later.M.val(next), later.D.val(next), later.h.val(next), later.m.val(next), val + 7200);
@@ -1463,24 +1471,31 @@ later = function() {
       }
     }
     function parseFor(r) {
-      var num = parseTokenValue(TOKENTYPES.rank);
-      var period = parseToken(TIME_PERIOD_TYPES);
-      var type = null;
-      for (var t in TOKENTYPES) {
-        if (TOKENTYPES[t].toString() === period.type.toString()) {
-          type = t;
-          break;
+      function parseOnePeriod(start) {
+        var end;
+        var num = parseTokenValue(TOKENTYPES.rank);
+        var period = parseToken(TIME_PERIOD_TYPES);
+        var type = null;
+        for (var t in TOKENTYPES) {
+          if (TOKENTYPES[t].toString() === period.type.toString()) {
+            type = t;
+            break;
+          }
         }
+        if (!type) {
+          error = pos;
+        } else {
+          end = later.t.next(start, later.t.val(start) + later[type].sec(num));
+        }
+        return end;
       }
-      if (!type) {
-        error = pos;
-      } else {
-        const now = new Date();
-        const nowPeriodValue = later[type].val(now);
-        const end = later[type].next(now, nowPeriodValue + num);
-        r.after(now).fullDate();
-        r.before(end).fullDate();
+      const now = new Date();
+      var end = parseOnePeriod(now);
+      while (maybeParseToken(TOKENTYPES.and)) {
+        end = parseOnePeriod(end);
       }
+      r.after(now).fullDate();
+      r.before(end).fullDate();
     }
     function parseOnThe(r) {
       if (maybeParseToken(TOKENTYPES.first)) {

@@ -306,27 +306,38 @@ later.parse.text = function(str) {
   }
 
   function parseFor(r) {
-    var num = parseTokenValue(TOKENTYPES.rank);
-    var period = parseToken(TIME_PERIOD_TYPES);
+    function parseOnePeriod(start) {
+      var end;
+      var num = parseTokenValue(TOKENTYPES.rank);
+      var period = parseToken(TIME_PERIOD_TYPES);
 
-    var type = null;
-    for (var t in TOKENTYPES) {
-      if (TOKENTYPES[t].toString() === period.type.toString()) {
-        type = t;
-        break;
+      var type = null;
+      for (var t in TOKENTYPES) {
+        if (TOKENTYPES[t].toString() === period.type.toString()) {
+          type = t;
+          break;
+        }
       }
+
+      if (!type) {
+        error = pos;
+      } else {
+        // Calculate date from start date set to start time + amount of time
+        // specified by the user.
+        end = later.t.next(start, later.t.val(start) + later[type].sec(num));
+      }
+
+      return end;
     }
 
-    if (!type) {
-      error = pos;
-    } else {
-      const now = new Date();
-      const nowPeriodValue = later[type].val(now);
-      const end = later[type].next(now, nowPeriodValue + num);
-
-      r.after(now).fullDate();
-      r.before(end).fullDate();
+    const now = new Date();
+    var end = parseOnePeriod(now);
+    while (maybeParseToken(TOKENTYPES.and)) {
+      end = parseOnePeriod(end);
     }
+
+    r.after(now).fullDate();
+    r.before(end).fullDate();
   }
 
   /**

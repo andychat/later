@@ -31,6 +31,15 @@ later.hour = later.h = {
   },
 
   /**
+   * Returns the seconds representation of hours.
+   *
+   * @param {Integer} val: The value to convert.
+   */
+  sec: function(val) {
+    return val * 3600;
+  },
+
+  /**
   * Returns true if the val is valid for the date specified.
   *
   * @param {Date} d: The date to check the value on

@@ -74,8 +74,6 @@ later.time = later.t = {
   * @param {int} val: The desired value, must be within extent
   */
   next: function(d, val) {
-    val = val > 86399 ? 0 : val;
-
     var next = later.date.next(
       later.Y.val(d),
       later.M.val(d),

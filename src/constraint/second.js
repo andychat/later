@@ -31,6 +31,15 @@ later.second = later.s = {
   },
 
   /**
+   * Returns the seconds representation of seconds.
+   *
+   * @param {Integer} val: The value to convert.
+   */
+  sec: function(val) {
+    return val;
+  },
+
+  /**
   * Returns true if the val is valid for the date specified.
   *
   * @param {Date} d: The date to check the value on

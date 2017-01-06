@@ -246,6 +246,9 @@ later = function() {
     val: function(d) {
       return d.h || (d.h = later.date.getHour.call(d));
     },
+    sec: function(val) {
+      return val * 3600;
+    },
     isValid: function(d, val) {
       return later.h.val(d) === val;
     },
@@ -276,6 +279,9 @@ later = function() {
     range: 60,
     val: function(d) {
       return d.m || (d.m = later.date.getMin.call(d));
+    },
+    sec: function(val) {
+      return val * 60;
     },
     isValid: function(d, val) {
       return later.m.val(d) === val;
@@ -334,6 +340,9 @@ later = function() {
     val: function(d) {
       return d.s || (d.s = later.date.getSec.call(d));
     },
+    sec: function(val) {
+      return val;
+    },
     isValid: function(d, val) {
       return later.s.val(d) === val;
     },
@@ -377,7 +386,6 @@ later = function() {
       return d;
     },
     next: function(d, val) {
-      val = val > 86399 ? 0 : val;
       var next = later.date.next(later.Y.val(d), later.M.val(d), later.D.val(d) + (val <= later.t.val(d) ? 1 : 0), 0, 0, val);
       if (!later.date.isUTC && next.getTime() < d.getTime()) {
         next = later.date.next(later.Y.val(next), later.M.val(next), later.D.val(next), later.h.val(next), later.m.val(next), val + 7200);
@@ -791,6 +799,9 @@ later = function() {
     return {
       isValid: function(d) {
         return getInstances("next", 1, d, d) !== later.NEVER;
+      },
+      inRange: function(d) {
+        return getInstances("next", 1, d, d, true) !== later.NEVER;
       },
       next: function(count, startDate, endDate) {
         return getInstances("next", count || 1, startDate, endDate);
